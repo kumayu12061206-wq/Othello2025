@@ -1,4 +1,5 @@
-
+# __init__.py には「AI関数 myai」とその補助関数だけを書く
+# sakura の import や othello.play は書かない
 
 DIRS = [(-1,-1),(0,-1),(1,-1),(-1,0),(1,0),(-1,1),(0,1),(1,1)]
 CORNERS = {(0,0),(7,0),(0,7),(7,7)}
@@ -16,7 +17,8 @@ W = [
     [120,-20, 20,  5,  5, 20,-20,120],
 ]
 
-def inb(x,y): return 0 <= x < 8 and 0 <= y < 8
+def inb(x,y): 
+    return 0 <= x < 8 and 0 <= y < 8
 
 def get_moves(board, color):
     opp = -color
@@ -77,7 +79,6 @@ def frontier_count(board, color):
     return c
 
 def danger_penalty(board, color):
-    # 角が空の時のX/Cは危険（近似）
     p = 0
     for (x,y) in X_SQUARES:
         if board[y][x] == color:
@@ -87,15 +88,12 @@ def danger_penalty(board, color):
             p += 8
     return p
 
-# ---------------- 安定石（確定石）近似 ----------------
-# 角から伸びる「確定辺」をまず確定 → その後、安定伝播で増やす
 def stable_discs(board, color):
     stable = [[False]*8 for _ in range(8)]
 
     def mark(x,y):
         stable[y][x] = True
 
-    # 角を起点に、同色が連続する限り辺を確定
     def mark_from_corner(cx, cy, dx, dy):
         x, y = cx, cy
         if board[y][x] != color:
@@ -106,21 +104,16 @@ def stable_discs(board, color):
             mark(x,y)
             x += dx; y += dy
 
-    # 4角から上下左右に
     mark_from_corner(0,0, 1,0); mark_from_corner(0,0, 0,1)
     mark_from_corner(7,0,-1,0); mark_from_corner(7,0, 0,1)
     mark_from_corner(0,7, 1,0); mark_from_corner(0,7, 0,-1)
     mark_from_corner(7,7,-1,0); mark_from_corner(7,7, 0,-1)
 
-    # 安定伝播：上下左右それぞれについて「端 or 安定石」に挟まれている（または端まで同色が続く）なら安定
     def stable_in_dir(x,y, dx,dy):
-        # その方向に端まで同色が続くなら安定
         nx, ny = x+dx, y+dy
         while inb(nx,ny) and board[ny][nx] == color:
             nx += dx; ny += dy
-        if not inb(nx,ny):  # 端に到達
-            return True
-        if stable[ny-dy][nx-dx] and board[ny-dy][nx-dx] == color and not inb(nx,ny):
+        if not inb(nx,ny):
             return True
         return False
 
@@ -131,8 +124,6 @@ def stable_discs(board, color):
             for x in range(8):
                 if board[y][x] != color or stable[y][x]:
                     continue
-
-                # 4方向ペア（左右・上下・斜め2本）で「少なくとも2ペアが安定」なら安定扱い（近似）
                 pairs_ok = 0
                 for (dx1,dy1, dx2,dy2) in [(1,0,-1,0),(0,1,0,-1),(1,1,-1,-1),(1,-1,-1,1)]:
                     ok1 = stable_in_dir(x,y, dx1,dy1) or (inb(x+dx1,y+dy1) and stable[y+dy1][x+dx1])
@@ -145,7 +136,6 @@ def stable_discs(board, color):
 
     return sum(1 for y in range(8) for x in range(8) if stable[y][x])
 
-# ---------------- 評価＆探索 ----------------
 def parity_score(board):
     return 1 if (empties_count(board) % 2 == 1) else -1
 
@@ -156,39 +146,32 @@ def eval_board(board, color):
     my_discs = count_discs(board, color)
     op_discs = count_discs(board, opp)
 
-    # 位置重み
     pos = 0
     for y in range(8):
         for x in range(8):
             if board[y][x] == color: pos += W[y][x]
             elif board[y][x] == opp: pos -= W[y][x]
 
-    # 角
     my_c = sum(1 for (x,y) in CORNERS if board[y][x] == color)
     op_c = sum(1 for (x,y) in CORNERS if board[y][x] == opp)
     corner = 120 * (my_c - op_c)
 
-    # 機動力
     my_m = len(get_moves(board, color))
     op_m = len(get_moves(board, opp))
     mobility = 0
     if my_m + op_m:
         mobility = 22 * (my_m - op_m)
 
-    # フロンティア（少ないほど良い）
     my_f = frontier_count(board, color)
     op_f = frontier_count(board, opp)
     frontier = -9 * (my_f - op_f)
 
-    # 危険マス
     danger = -danger_penalty(board, color) + danger_penalty(board, opp)
 
-    # ★安定石（確定石）差分：ここが“もう一段”強くなるポイント
     my_s = stable_discs(board, color)
     op_s = stable_discs(board, opp)
     stable = 35 * (my_s - op_s)
 
-    # 終盤：石差を強く（勝ち切り）
     if empties <= 10:
         return 2500 * (my_discs - op_discs) + 800 * (my_c - op_c) + 120 * (my_s - op_s)
 
@@ -264,14 +247,12 @@ def myai(board, color):
     if not moves:
         return (-1, -1)
 
-    # 角は即打ち
     for mv in moves:
         if mv in CORNERS:
             return mv
 
     empties = empties_count(board)
 
-    # 終盤は完全読み（空き<=12なら終局まで）
     if empties <= 12:
         max_depth = empties
     elif empties <= 22:
@@ -296,4 +277,3 @@ def myai(board, color):
                 alpha = val
 
     return best_move
-
