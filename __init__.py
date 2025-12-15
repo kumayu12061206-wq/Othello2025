@@ -1,4 +1,4 @@
-from sakura import othello
+
 
 DIRS = [(-1,-1),(0,-1),(1,-1),(-1,0),(1,0),(-1,1),(0,1),(1,1)]
 CORNERS = {(0,0),(7,0),(0,7),(7,7)}
@@ -297,4 +297,3 @@ def myai(board, color):
 
     return best_move
 
-othello.play(myai)
