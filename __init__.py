@@ -238,4 +238,4 @@ def myai(board, color):
     # 万一ズレても置けません連発を防ぐ：確実に合法な手を返す
     return moves[0]
 
-othello.play(myai)
+
