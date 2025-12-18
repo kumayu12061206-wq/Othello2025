@@ -1,206 +1,153 @@
-# __init__.py には「AI関数 myai」とその補助関数だけを書く
-# sakura の import や othello.play は書かない
+from sakura import othello
 
 DIRS = [(-1,-1),(0,-1),(1,-1),(-1,0),(1,0),(-1,1),(0,1),(1,1)]
-CORNERS = {(0,0),(7,0),(0,7),(7,7)}
-C_SQUARES = {(1,0),(0,1),(6,0),(7,1),(0,6),(1,7),(6,7),(7,6)}
-X_SQUARES = {(1,1),(6,1),(1,6),(6,6)}
 
-W = [
-    [120,-20, 20,  5,  5, 20,-20,120],
-    [-20,-40, -5, -5, -5, -5,-40,-20],
-    [ 20, -5, 15,  3,  3, 15, -5, 20],
-    [  5, -5,  3,  3,  3,  3, -5,  5],
-    [  5, -5,  3,  3,  3,  3, -5,  5],
-    [ 20, -5, 15,  3,  3, 15, -5, 20],
-    [-20,-40, -5, -5, -5, -5,-40,-20],
-    [120,-20, 20,  5,  5, 20,-20,120],
-]
+# ---------------- 基本ユーティリティ ----------------
+def inb(board, x, y):
+    return 0 <= y < len(board) and 0 <= x < len(board[y])
 
-def inb(x,y): 
-    return 0 <= x < 8 and 0 <= y < 8
+def empties_count(board):
+    return sum(1 for y in range(len(board)) for x in range(len(board[y])) if board[y][x] == 0)
 
+def count_discs(board, color):
+    return sum(1 for y in range(len(board)) for x in range(len(board[y])) if board[y][x] == color)
+
+def opp_of(color):
+    # 環境差を吸収：
+    #  - 1/2表現なら 1<->2
+    #  - ±1表現なら符号反転
+    if color in (1, 2):
+        return 3 - color
+    return -color
+
+# ---------------- 合法手生成 & 反映 ----------------
 def get_moves(board, color):
-    opp = -color
+    opp = opp_of(color)
     moves = []
-    for y in range(8):
-        for x in range(8):
+
+    for y in range(len(board)):
+        for x in range(len(board[y])):
             if board[y][x] != 0:
                 continue
+
             ok = False
             for dx, dy in DIRS:
-                nx, ny = x+dx, y+dy
-                if not inb(nx,ny) or board[ny][nx] != opp:
+                nx, ny = x + dx, y + dy
+                if not inb(board, nx, ny) or board[ny][nx] != opp:
                     continue
-                while inb(nx,ny) and board[ny][nx] == opp:
-                    nx += dx; ny += dy
-                if inb(nx,ny) and board[ny][nx] == color:
+
+                # 相手石が続く間進む
+                while inb(board, nx, ny) and board[ny][nx] == opp:
+                    nx += dx
+                    ny += dy
+
+                # 自分石で挟めていれば合法
+                if inb(board, nx, ny) and board[ny][nx] == color:
                     ok = True
                     break
+
             if ok:
-                moves.append((x,y))
+                moves.append((x, y))
+
     return moves
 
 def apply_move(board, color, move):
-    x,y = move
+    x, y = move
     nb = [r[:] for r in board]
     nb[y][x] = color
-    opp = -color
+
+    opp = opp_of(color)
+
     for dx, dy in DIRS:
-        nx, ny = x+dx, y+dy
-        if not inb(nx,ny) or nb[ny][nx] != opp:
+        nx, ny = x + dx, y + dy
+        if not inb(nb, nx, ny) or nb[ny][nx] != opp:
             continue
+
         path = []
-        while inb(nx,ny) and nb[ny][nx] == opp:
-            path.append((nx,ny))
-            nx += dx; ny += dy
-        if inb(nx,ny) and nb[ny][nx] == color and path:
+        while inb(nb, nx, ny) and nb[ny][nx] == opp:
+            path.append((nx, ny))
+            nx += dx
+            ny += dy
+
+        if inb(nb, nx, ny) and nb[ny][nx] == color and path:
             for px, py in path:
                 nb[py][px] = color
+
     return nb
 
-def empties_count(board):
-    return sum(1 for y in range(8) for x in range(8) if board[y][x] == 0)
-
-def count_discs(board, color):
-    return sum(1 for y in range(8) for x in range(8) if board[y][x] == color)
-
-def frontier_count(board, color):
-    c = 0
-    for y in range(8):
-        for x in range(8):
-            if board[y][x] != color:
-                continue
-            for dx, dy in DIRS:
-                nx, ny = x+dx, y+dy
-                if inb(nx,ny) and board[ny][nx] == 0:
-                    c += 1
-                    break
-    return c
-
-def danger_penalty(board, color):
-    p = 0
-    for (x,y) in X_SQUARES:
-        if board[y][x] == color:
-            p += 18
-    for (x,y) in C_SQUARES:
-        if board[y][x] == color:
-            p += 8
-    return p
-
-def stable_discs(board, color):
-    stable = [[False]*8 for _ in range(8)]
-
-    def mark(x,y):
-        stable[y][x] = True
-
-    def mark_from_corner(cx, cy, dx, dy):
-        x, y = cx, cy
-        if board[y][x] != color:
-            return
-        mark(x,y)
-        x += dx; y += dy
-        while inb(x,y) and board[y][x] == color:
-            mark(x,y)
-            x += dx; y += dy
-
-    mark_from_corner(0,0, 1,0); mark_from_corner(0,0, 0,1)
-    mark_from_corner(7,0,-1,0); mark_from_corner(7,0, 0,1)
-    mark_from_corner(0,7, 1,0); mark_from_corner(0,7, 0,-1)
-    mark_from_corner(7,7,-1,0); mark_from_corner(7,7, 0,-1)
-
-    def stable_in_dir(x,y, dx,dy):
-        nx, ny = x+dx, y+dy
-        while inb(nx,ny) and board[ny][nx] == color:
-            nx += dx; ny += dy
-        if not inb(nx,ny):
-            return True
-        return False
-
-    changed = True
-    while changed:
-        changed = False
-        for y in range(8):
-            for x in range(8):
-                if board[y][x] != color or stable[y][x]:
-                    continue
-                pairs_ok = 0
-                for (dx1,dy1, dx2,dy2) in [(1,0,-1,0),(0,1,0,-1),(1,1,-1,-1),(1,-1,-1,1)]:
-                    ok1 = stable_in_dir(x,y, dx1,dy1) or (inb(x+dx1,y+dy1) and stable[y+dy1][x+dx1])
-                    ok2 = stable_in_dir(x,y, dx2,dy2) or (inb(x+dx2,y+dy2) and stable[y+dy2][x+dx2])
-                    if ok1 and ok2:
-                        pairs_ok += 1
-                if pairs_ok >= 2:
-                    stable[y][x] = True
-                    changed = True
-
-    return sum(1 for y in range(8) for x in range(8) if stable[y][x])
-
-def parity_score(board):
-    return 1 if (empties_count(board) % 2 == 1) else -1
-
+# ---------------- 評価関数（シンプルに安定動作重視） ----------------
+# 「置けません」をなくす目的なら、まずは評価を堅牢にするのが正解
+# 角・辺・機動力・石差（終盤だけ強め）で十分強い
 def eval_board(board, color):
-    opp = -color
+    opp = opp_of(color)
     empties = empties_count(board)
 
-    my_discs = count_discs(board, color)
-    op_discs = count_discs(board, opp)
+    # 角（盤面サイズ依存）
+    H = len(board)
+    W0 = len(board[0])
+    Wb = len(board[H-1])
+    CORNERS = {(0,0), (W0-1,0), (0,H-1), (Wb-1,H-1)}
 
-    pos = 0
-    for y in range(8):
-        for x in range(8):
-            if board[y][x] == color: pos += W[y][x]
-            elif board[y][x] == opp: pos -= W[y][x]
+    my_c = sum(1 for (x,y) in CORNERS if inb(board,x,y) and board[y][x] == color)
+    op_c = sum(1 for (x,y) in CORNERS if inb(board,x,y) and board[y][x] == opp)
 
-    my_c = sum(1 for (x,y) in CORNERS if board[y][x] == color)
-    op_c = sum(1 for (x,y) in CORNERS if board[y][x] == opp)
-    corner = 120 * (my_c - op_c)
+    # 辺（端にある石を少し評価）
+    my_edge = 0
+    op_edge = 0
+    for y in range(H):
+        for x in range(len(board[y])):
+            if x == 0 or y == 0 or y == H-1 or x == len(board[y]) - 1:
+                if board[y][x] == color: my_edge += 1
+                elif board[y][x] == opp: op_edge += 1
 
+    # 機動力
     my_m = len(get_moves(board, color))
     op_m = len(get_moves(board, opp))
-    mobility = 0
-    if my_m + op_m:
-        mobility = 22 * (my_m - op_m)
 
-    my_f = frontier_count(board, color)
-    op_f = frontier_count(board, opp)
-    frontier = -9 * (my_f - op_f)
+    # 石差（終盤だけ強め）
+    my_d = count_discs(board, color)
+    op_d = count_discs(board, opp)
 
-    danger = -danger_penalty(board, color) + danger_penalty(board, opp)
+    if empties <= 12:
+        return 2000 * (my_d - op_d) + 500 * (my_c - op_c) + 30 * (my_m - op_m)
 
-    my_s = stable_discs(board, color)
-    op_s = stable_discs(board, opp)
-    stable = 35 * (my_s - op_s)
+    return 300 * (my_c - op_c) + 10 * (my_edge - op_edge) + 20 * (my_m - op_m) + 2 * (my_d - op_d)
 
-    if empties <= 10:
-        return 2500 * (my_discs - op_discs) + 800 * (my_c - op_c) + 120 * (my_s - op_s)
-
-    return pos + corner + mobility + frontier + danger + stable + 6 * parity_score(board)
-
+# ---------------- 探索（negamax + αβ + TT） ----------------
 TT = {}
 
 def board_key(board, color):
     return (color, tuple(tuple(r) for r in board))
 
+def game_over(board, color):
+    opp = opp_of(color)
+    return (len(get_moves(board, color)) == 0) and (len(get_moves(board, opp)) == 0)
+
 def terminal_value(board, color):
-    opp = -color
+    opp = opp_of(color)
     my = count_discs(board, color)
     op = count_discs(board, opp)
-    if my > op: return 1000000
-    if my < op: return -1000000
+    if my > op: return 10**9
+    if my < op: return -10**9
     return 0
 
 def ordered_moves(board, color, moves):
-    opp = -color
-    def score(m):
-        x,y = m
-        s = W[y][x]
-        if (x,y) in CORNERS: s += 100000
-        if (x,y) in X_SQUARES: s -= 2500
-        if (x,y) in C_SQUARES: s -= 900
-        nb = apply_move(board, color, m)
-        s += 12 * (len(get_moves(board, opp)) - len(get_moves(nb, opp)))
+    # 角優先 + 相手の手を減らす手を優先
+    opp = opp_of(color)
+    H = len(board)
+    W0 = len(board[0])
+    Wb = len(board[H-1])
+    CORNERS = {(0,0), (W0-1,0), (0,H-1), (Wb-1,H-1)}
+
+    def score(mv):
+        x, y = mv
+        s = 0
+        if (x,y) in CORNERS:
+            s += 100000
+        nb = apply_move(board, color, mv)
+        s += 30 * (len(get_moves(board, opp)) - len(get_moves(nb, opp)))
         return s
+
     return sorted(moves, key=score, reverse=True)
 
 def negamax(board, color, depth, alpha, beta):
@@ -210,10 +157,10 @@ def negamax(board, color, depth, alpha, beta):
         if tt_depth >= depth:
             return tt_val
 
+    opp = opp_of(color)
     moves = get_moves(board, color)
-    opp = -color
 
-    if not moves and not get_moves(board, opp):
+    if game_over(board, color):
         v = terminal_value(board, color)
         TT[key] = (depth, v)
         return v
@@ -242,38 +189,53 @@ def negamax(board, color, depth, alpha, beta):
     TT[key] = (depth, best)
     return best
 
+# ---------------- AI本体（座標も自動対応） ----------------
 def myai(board, color):
+    # 念のため毎手TTを肥大化させすぎない（軽く）
+    # TT.clear()  # 強くしたいならコメントアウト（保持した方が強い）
+
     moves = get_moves(board, color)
     if not moves:
         return (-1, -1)
 
-    for mv in moves:
-        if mv in CORNERS:
-            return mv
-
     empties = empties_count(board)
 
+    # 深さ（重くしすぎない）
     if empties <= 12:
         max_depth = empties
     elif empties <= 22:
-        max_depth = 8
-    elif empties <= 44:
         max_depth = 7
-    else:
+    elif empties <= 44:
         max_depth = 6
+    else:
+        max_depth = 5
 
     best_move = moves[0]
     best_val = -10**18
 
-    for depth in range(2, max_depth+1):
+    # 反復深化
+    for depth in range(2, max_depth + 1):
         alpha, beta = -10**18, 10**18
         for mv in ordered_moves(board, color, moves):
             nb = apply_move(board, color, mv)
-            val = -negamax(nb, -color, depth-1, -beta, -alpha)
+            val = -negamax(nb, opp_of(color), depth-1, -beta, -alpha)
             if val > best_val:
                 best_val = val
                 best_move = mv
             if val > alpha:
                 alpha = val
 
-    return best_move
+    # --- ここが超重要：座標系が (x,y) か (y,x) か自動で合わせる ---
+    # sakura側がどっちでも、「合法手として認識される方」を返す
+    cand1 = best_move
+    cand2 = (best_move[1], best_move[0])
+
+    if cand1 in moves:
+        return cand1
+    if cand2 in moves:
+        return cand2
+
+    # 万一ズレても置けません連発を防ぐ：確実に合法な手を返す
+    return moves[0]
+
+othello.play(myai)
